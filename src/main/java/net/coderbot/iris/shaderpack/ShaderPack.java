@@ -133,6 +133,10 @@ public class ShaderPack {
 				dimensionIdCreator.add("world10");
 				dimensionMap.putIfAbsent(10, "world10"); //Underdark
 			}
+			if (Files.exists(root.resolve("world-112"))) {
+				dimensionIdCreator.add("world-112");
+				dimensionMap.putIfAbsent(-112, "world-112"); //The Last Milliuium
+			}
 		}
 
 		for (String id : dimensionIdCreator) {
