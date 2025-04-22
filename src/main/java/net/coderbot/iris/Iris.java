@@ -530,9 +530,9 @@ public class Iris {
         }
     }
 
-    public static DimensionId lastDimension = null;
+    public static Integer lastDimension = null;
 
-    public static DimensionId getCurrentDimension() {
+    public static Integer getCurrentDimension() {
         final WorldClient level = Minecraft.getMinecraft().theWorld;
 
         if (level != null) {
@@ -543,7 +543,7 @@ public class Iris {
             } else if (level.provider.dimensionId == 1) {
                 return DimensionId.END;
             } else {
-                return DimensionId.OVERWORLD;
+                return level.provider.dimensionId;
             }
         } else {
             // This prevents us from reloading the shaderpack unless we need to. Otherwise, if the player is in the
@@ -553,7 +553,7 @@ public class Iris {
         }
     }
 
-    private static WorldRenderingPipeline createPipeline(DimensionId dimensionId) {
+    private static WorldRenderingPipeline createPipeline(int dimensionId) {
         if (currentPack == null) {
             // Completely disables shader-based rendering
             return new FixedFunctionWorldRenderingPipeline();

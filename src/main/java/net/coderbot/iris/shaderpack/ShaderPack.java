@@ -7,6 +7,7 @@ import com.google.gson.JsonParseException;
 import com.google.gson.stream.JsonReader;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import lombok.Getter;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.features.FeatureFlags;
@@ -14,12 +15,14 @@ import net.coderbot.iris.shaderpack.include.AbsolutePackPath;
 import net.coderbot.iris.shaderpack.include.IncludeGraph;
 import net.coderbot.iris.shaderpack.include.IncludeProcessor;
 import net.coderbot.iris.shaderpack.include.ShaderPackSourceNames;
+import net.coderbot.iris.shaderpack.materialmap.NamespacedId;
 import net.coderbot.iris.shaderpack.option.ProfileSet;
 import net.coderbot.iris.shaderpack.option.ShaderPackOptions;
 import net.coderbot.iris.shaderpack.option.menu.OptionMenuContainer;
 import net.coderbot.iris.shaderpack.option.values.MutableOptionValues;
 import net.coderbot.iris.shaderpack.option.values.OptionValues;
 import net.coderbot.iris.shaderpack.preprocessor.JcppProcessor;
+import net.coderbot.iris.shaderpack.preprocessor.PropertiesPreprocessor;
 import net.coderbot.iris.shaderpack.texture.CustomTextureData;
 import net.coderbot.iris.shaderpack.texture.TextureFilteringData;
 import net.coderbot.iris.shaderpack.texture.TextureStage;
@@ -30,6 +33,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -42,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -51,7 +56,7 @@ public class ShaderPack {
     public final CustomUniforms.Builder customUniforms;
 
 	private final ProgramSet base;
-	private final Map<NamespacedId, ProgramSetInterface> overrides;
+	private final Map<Integer, ProgramSet> overrides;
 
 	@Getter
     private final IdMap idMap;
@@ -65,9 +70,12 @@ public class ShaderPack {
 	@Getter
     private final OptionMenuContainer menuContainer;
 
+	private final Function<AbsolutePackPath, String> sourceProvider;
+	private final ShaderProperties shaderProperties;
 	private final ProfileSet.ProfileResult profile;
 	private final String profileInfo;
-	private Map<NamespacedId, String> dimensionMap;
+	private final List<String> dimensionIds;
+	private Map<Integer, String> dimensionMap;
 
 	public ShaderPack(Path root, Iterable<StringPair> environmentDefines) throws IOException, IllegalStateException {
 		this(root, Collections.emptyMap(), environmentDefines);
@@ -92,30 +100,38 @@ public class ShaderPack {
 		ShaderPackSourceNames.findPresentSources(starts, root, AbsolutePackPath.fromAbsolutePath("/"),
 				potentialFileNames);
 
+		dimensionIds = new ArrayList<>();
+		
 		final boolean[] hasDimensionIds = {false}; // Thanks Java
 
-		// This cannot be done in IDMap, as we do not have the include graph, and subsequently the shader settings.
-		List<String> dimensionIdCreator = loadProperties(root, "dimension.properties", environmentDefines).map(dimensionProperties -> {
-			hasDimensionIds[0] = !dimensionProperties.isEmpty();
-			dimensionMap = parseDimensionMap(dimensionProperties, "dimension.", "dimension.properties");
-			return parseDimensionIds(dimensionProperties, "dimension.");
-		}).orElse(new ArrayList<>());
+		//This cannot be done in IDMap, as we do not have the include graph, and subsequently the shader settings.
+		List<String> dimensionIdCreator = new ArrayList<>();
+		//List<String> dimensionIdCreator = loadProperties2(root, "dimension.properties", environmentDefines).map(dimensionProperties -> {
+		//	hasDimensionIds[0] = !dimensionProperties.isEmpty();
+		//	dimensionMap = parseDimensionMap(dimensionProperties, "dimension.", "dimension.properties");
+		//	return parseDimensionIds(dimensionProperties, "dimension.");
+		//});
 
 		if (!hasDimensionIds[0]) {
 			dimensionMap = new Object2ObjectArrayMap<>();
+			dimensionIdCreator = new ArrayList<>();
 
 			if (Files.exists(root.resolve("world0"))) {
 				dimensionIdCreator.add("world0");
-				dimensionMap.putIfAbsent(DimensionId.OVERWORLD, "world0");
-				dimensionMap.putIfAbsent(new NamespacedId("*", "*"), "world0");
+				dimensionMap.putIfAbsent(0, "world0");
+				dimensionMap.putIfAbsent(0, "world0"); //overworld
 			}
 			if (Files.exists(root.resolve("world-1"))) {
 				dimensionIdCreator.add("world-1");
-				dimensionMap.putIfAbsent(DimensionId.NETHER, "world-1");
+				dimensionMap.putIfAbsent(-1, "world-1"); //nether
 			}
 			if (Files.exists(root.resolve("world1"))) {
 				dimensionIdCreator.add("world1");
-				dimensionMap.putIfAbsent(DimensionId.END, "world1");
+				dimensionMap.putIfAbsent(1, "world1"); //end
+			}
+			if (Files.exists(root.resolve("world10"))) {
+				dimensionIdCreator.add("world10");
+				dimensionMap.putIfAbsent(10, "world10"); //Underdark
 			}
 		}
 
@@ -144,7 +160,7 @@ public class ShaderPack {
 		graph = this.shaderPackOptions.getIncludes();
 
 		Iterable<StringPair> finalEnvironmentDefines = environmentDefines;
-		ShaderProperties shaderProperties = loadProperties(root, "shaders.properties")
+		this.shaderProperties = loadProperties(root, "shaders.properties")
 				.map(source -> new ShaderProperties(source, shaderPackOptions, finalEnvironmentDefines))
 				.orElseGet(ShaderProperties::empty);
 
@@ -203,7 +219,7 @@ public class ShaderPack {
 
 		// Set up our source provider for creating ProgramSets
 		Iterable<StringPair> finalEnvironmentDefines1 = environmentDefines;
-		Function<AbsolutePackPath, String> sourceProvider = (path) -> {
+		this.sourceProvider = (path) -> {
 			String pathString = path.getPathString();
 			// Removes the first "/" in the path if present, and the file
 			// extension in order to represent the path as its program name
@@ -299,6 +315,80 @@ public class ShaderPack {
 		return Optional.of(fileContents);
 	}
 
+	// TODO: Copy-paste from IdMap, find a way to deduplicate this
+	private static Optional<Properties> loadProperties2(Path shaderPath, String name,
+													   Iterable<StringPair> environmentDefines) {
+		String fileContents = readProperties(shaderPath, name);
+		if (fileContents == null) {
+			return Optional.empty();
+		}
+
+		String processed = PropertiesPreprocessor.preprocessSource(fileContents, environmentDefines);
+
+		StringReader propertiesReader = new StringReader(processed);
+
+		// Note: ordering of properties is significant
+		// See https://github.com/IrisShaders/Iris/issues/1327 and the relevant putIfAbsent calls in
+		// BlockMaterialMapping
+		Properties properties = new OrderBackedProperties();
+		try {
+			properties.load(propertiesReader);
+		} catch (IOException e) {
+			Iris.logger.error("Error loading " + name + " at " + shaderPath, e);
+
+			return Optional.empty();
+		}
+
+		return Optional.of(properties);
+	}
+
+	private static Map<Integer, String> parseDimensionMap(Properties properties, String keyPrefix, String fileName) {
+		Map<Integer, String> overrides = new Object2ObjectArrayMap<>();
+
+		properties.forEach((keyObject, valueObject) -> {
+			String key = (String) keyObject;
+			String value = (String) valueObject;
+
+			if (!key.startsWith(keyPrefix)) {
+				// Not a valid line, ignore it
+				return;
+			}
+
+			key = key.substring(keyPrefix.length());
+
+			for (String part : value.split("\\s+")) {
+				if (part.equals("*")) {
+					overrides.put(100000, key);
+				}
+				try {
+					overrides.put(Integer.parseInt(part), key);
+				} catch (NumberFormatException e) {
+					//nope
+				}
+			}
+		});
+
+		return overrides;
+	}
+
+	private List<String> parseDimensionIds(Properties dimensionProperties, String keyPrefix) {
+		ArrayList<String> names = new ArrayList<>();
+
+		dimensionProperties.forEach((keyObject, value) -> {
+			String key = (String) keyObject;
+			if (!key.startsWith(keyPrefix)) {
+				// Not a valid line, ignore it
+				return;
+			}
+
+			key = key.substring(keyPrefix.length());
+
+			names.add(key);
+		});
+
+		return names;
+	}
+
 	// TODO: Implement raw texture data types
 	public CustomTextureData readTexture(Path root, String path) throws IOException {
 		CustomTextureData customTextureData;
@@ -373,8 +463,8 @@ public class ShaderPack {
 		}
 	}
 
-	public ProgramSet getProgramSet(DimensionId dimension) {
-		ProgramSetInterface overrides;
+	public ProgramSet getProgramSet(int dimension) {
+		ProgramSet overrides;
 
 		overrides = this.overrides.computeIfAbsent(dimension, dim -> {
 			if (dimensionMap.containsKey(dimension)) {
@@ -383,10 +473,10 @@ public class ShaderPack {
 					return new ProgramSet(AbsolutePackPath.fromAbsolutePath("/" + name), sourceProvider, shaderProperties, this);
 				} else {
 					Iris.logger.error("Attempted to load dimension folder " + name + " for dimension " + dimension + ", but it does not exist!");
-					return ProgramSetInterface.Empty.INSTANCE;
+					return this.base;
 				}
 			} else {
-				return ProgramSetInterface.Empty.INSTANCE;
+				return this.base;
 			}
 		});
 

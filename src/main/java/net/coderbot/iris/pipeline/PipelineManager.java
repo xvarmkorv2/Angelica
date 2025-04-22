@@ -18,17 +18,17 @@ import java.util.function.Function;
 
 public class PipelineManager {
 
-	private final Function<DimensionId, WorldRenderingPipeline> pipelineFactory;
-	private final Map<DimensionId, WorldRenderingPipeline> pipelinesPerDimension = new HashMap<>();
+	private final Function<Integer, WorldRenderingPipeline> pipelineFactory;
+	private final Map<Integer, WorldRenderingPipeline> pipelinesPerDimension = new HashMap<>();
 	private WorldRenderingPipeline pipeline = new FixedFunctionWorldRenderingPipeline();
     @Getter
 	private int versionCounterForSodiumShaderReload = 0;
 
-	public PipelineManager(Function<DimensionId, WorldRenderingPipeline> pipelineFactory) {
+	public PipelineManager(Function<Integer, WorldRenderingPipeline> pipelineFactory) {
 		this.pipelineFactory = pipelineFactory;
 	}
 
-	public WorldRenderingPipeline preparePipeline(DimensionId currentDimension) {
+	public WorldRenderingPipeline preparePipeline(Integer currentDimension) {
 		if (!pipelinesPerDimension.containsKey(currentDimension)) {
 			SystemTimeUniforms.COUNTER.reset();
 			SystemTimeUniforms.TIMER.reset();

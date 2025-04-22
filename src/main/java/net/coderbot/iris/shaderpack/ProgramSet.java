@@ -13,13 +13,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
-public interface ProgramSetInterface {
-	class Empty implements ProgramSetInterface {
 
-		public static final ProgramSetInterface INSTANCE = new Empty();
-	}
-}
-public class ProgramSet implements ProgramSetInterface  {
+public class ProgramSet  {
 	private final PackDirectives packDirectives;
 
 	private final ProgramSource shadow;
