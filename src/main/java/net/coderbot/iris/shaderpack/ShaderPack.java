@@ -48,27 +48,25 @@ import java.util.stream.Collectors;
 public class ShaderPack {
 	private static final Gson GSON = new Gson();
 
-	public final CustomUniforms.Builder customUniforms;
+    public final CustomUniforms.Builder customUniforms;
 
 	private final ProgramSet base;
 	private final Map<NamespacedId, ProgramSetInterface> overrides;
 
 	@Getter
-	private final IdMap idMap;
+    private final IdMap idMap;
 	@Getter
-    priv
-	tter
-	priv
-	vate
-	final CustomTextureData customNoiseTexture;
+    private final LanguageMap languageMap;
 	@Getter
-	private final ShaderPackOptions shaderPackOptions;
+    private final EnumMap<TextureStage, Object2ObjectMap<String, CustomTextureData>> customTextureDataMap = new EnumMap<>(TextureStage.class);
+	private final CustomTextureData customNoiseTexture;
+	@Getter
+    private final ShaderPackOptions shaderPackOptions;
+	@Getter
+    private final OptionMenuContainer menuContainer;
 
-	@Getter
-    priv
-	
-	private
-	vate final String profileInfo;
+	private final ProfileSet.ProfileResult profile;
+	private final String profileInfo;
 	private Map<NamespacedId, String> dimensionMap;
 
 	public ShaderPack(Path root, Iterable<StringPair> environmentDefines) throws IOException, IllegalStateException {
@@ -78,25 +76,19 @@ public class ShaderPack {
 	/**
 	 * Reads a shader pack from the disk.
 	 *
-	 * @param root The path to the "shaders" directory within the shader pack. The
-	 *             created ShaderPack will not retain
-	 *             this path in any form; once the constructor exits, all disk I/O
-	 *             needed to load this shader pack will
-	 *             have completed, and there is no need to hold on to the path for
-	 *             that reason.
+	 * @param root The path to the "shaders" directory within the shader pack. The created ShaderPack will not retain
+	 *             this path in any form; once the constructor exits, all disk I/O needed to load this shader pack will
+	 *             have completed, and there is no need to hold on to the path for that reason.
 	 * @throws IOException if there are any IO errors during shader pack loading.
-	 * 
 	 */
-	*
-
 	public ShaderPack(Path root, Map<String, String> changedConfigs, Iterable<StringPair> environmentDefines) throws IOException, IllegalStateException {
 		// A null path is not allowed.
 		Objects.requireNonNull(root);
-			
 
 
+		ImmutableList.Builder<AbsolutePackPath> starts = ImmutableList.builder();
+		ImmutableList<String> potentialFileNames = ShaderPackSourceNames.POTENTIAL_STARTS;
 
-		
 		ShaderPackSourceNames.findPresentSources(starts, root, AbsolutePackPath.fromAbsolutePath("/"),
 				potentialFileNames);
 
@@ -134,25 +126,18 @@ public class ShaderPack {
 			}
 		}
 
-				
 		// Read all files and included files recursively
-				
 		IncludeGraph graph = new IncludeGraph(root, starts.build());
 
-			.getFailures
-					 aph.getFailures().forEach((path, error) -> {
-					 is.logger.error("{}", error.toString()
-			// ;
-			// 
-			// 
-			// 
-					 
-			 
+		if (!graph.getFailures().isEmpty()) {
+			graph.getFailures().forEach((path, error) -> {
+				Iris.logger.error("{}", error.toString());
+			});
+
 			throw new IOException("Failed to resolve some #include directives, see previous messages for details");
 		}
 
 		this.languageMap = new LanguageMap(root.resolve("lang"));
-				
 
 		// Discover, merge, and apply shader pack options
 		this.shaderPackOptions = new ShaderPackOptions(graph, changedConfigs);
@@ -162,7 +147,6 @@ public class ShaderPack {
 		ShaderProperties shaderProperties = loadProperties(root, "shaders.properties")
 				.map(source -> new ShaderProperties(source, shaderPackOptions, finalEnvironmentDefines))
 				.orElseGet(ShaderProperties::empty);
-				
 
 		List<FeatureFlags> invalidFlagList = shaderProperties.getRequiredFeatureFlags().stream().filter(FeatureFlags::isInvalid).map(FeatureFlags::getValue).collect(Collectors.toList());
 		List<String> invalidFeatureFlags = invalidFlagList.stream().map(FeatureFlags::getHumanReadableName).collect(Collectors.toList());
@@ -170,11 +154,9 @@ public class ShaderPack {
 		if (!invalidFeatureFlags.isEmpty()) {
             // TODO: GUI
 //			if (Minecraft.getMinecraft().screen instanceof ShaderPackScreen) {
-//				Minecraft.getMinecraft().setS
-				reen(new FeatureMissingErrorScreen(Minecraft.getMinecraft().screen, I18n.format("iris.unsupported.pack"), I18n.format("iris.unsupported.pack.description", FeatureFlags.getInvalidStatus(invalidFlagList), invalidFeatureFlags.stream()
+//				Minecraft.getMinecraft().setScreen(new FeatureMissingErrorScreen(Minecraft.getMinecraft().screen, I18n.format("iris.unsupported.pack"), I18n.format("iris.unsupported.pack.description", FeatureFlags.getInvalidStatus(invalidFlagList), invalidFeatureFlags.stream()
 //					.collect(Collectors.joining(", ", ": ", ".")))));
 //			}
-					
 			IrisApi.getInstance().getConfig().setShadersEnabledAndApply(false);
 		}
 
@@ -184,14 +166,11 @@ public class ShaderPack {
 			List<StringPair> newEnvDefines = new ArrayList<>();
 			environmentDefines.forEach(newEnvDefines::add);
 			optionalFeatureFlags.forEach(flag -> newEnvDefines.add(new StringPair("IRIS_FEATURE_" + flag, "")));
-			environmentDefines = ImmutableList.copyO
-					(newEnvDefines);
+			environmentDefines = ImmutableList.copyOf(newEnvDefines);
 		}
 
-					
 		ProfileSet profiles = ProfileSet.fromTree(shaderProperties.getProfiles(), this.shaderPackOptions.getOptionSet());
-		this.profile = profiles.scan(this.shaderPackOptions.getOptionSet(), this.shaderPackOpt
-					ons.getOptionValues());
+		this.profile = profiles.scan(this.shaderPackOptions.getOptionSet(), this.shaderPackOptions.getOptionValues());
 
 		// Get programs that should be disabled from the detected profile
 		List<String> disabledPrograms = new ArrayList<>();
@@ -205,11 +184,9 @@ public class ShaderPack {
 			}
 		});
 
-		this.menuContainer = new OptionMenuContainer(shaderProperties, this.shaderPackOpti
-					ns, profiles);
+		this.menuContainer = new OptionMenuContainer(shaderProperties, this.shaderPackOptions, profiles);
 
 		{
-			// 
 			String profileName = getCurrentProfileName();
 			OptionValues profileOptions = new MutableOptionValues(
 					this.shaderPackOptions.getOptionSet(), this.profile.current.map(p -> p.optionValues).orElse(new HashMap<>()));
@@ -228,16 +205,11 @@ public class ShaderPack {
 		Iterable<StringPair> finalEnvironmentDefines1 = environmentDefines;
 		Function<AbsolutePackPath, String> sourceProvider = (path) -> {
 			String pathString = path.getPathString();
-			// 
 			// Removes the first "/" in the path if present, and the file
 			// extension in order to represent the path as its program name
-			// 
-			String programString = pathString.substring(pathString.indexOf("/") == 0 ? 1 :
-			// 0, pathString.lastIndexOf("."));
+			String programString = pathString.substring(pathString.indexOf("/") == 0 ? 1 : 0, pathString.lastIndexOf("."));
 
-			// 
-			// Return an empty program source if the program is disabled by the current p
-			// ofile
+			// Return an empty program source if the program is disabled by the current profile
 			if (disabledPrograms.contains(programString)) {
 				return null;
 			}
@@ -247,11 +219,8 @@ public class ShaderPack {
 			if (lines == null) {
 				return null;
 			}
-				
 
-				
 			StringBuilder builder = new StringBuilder();
-				
 
 			for (String line : lines) {
 				builder.append(line);
@@ -272,13 +241,11 @@ public class ShaderPack {
 
 		this.base = new ProgramSet(AbsolutePackPath.fromAbsolutePath("/"), sourceProvider, shaderProperties, this);
 
-		//this.overworld = loadOverrides(hasWorld0, AbsolutePackPath.fromAbsolutePath("/world0"), sourceProvider, shaderProperties, this);
-		//this.nether = loadOverrides(hasNether, AbsolutePackPath.fromAbsolutePath("/world-1"), sourceProvider, shaderProperties, this);
-		//this.end = loadOverrides(hasEnd, AbsolutePackPath.fromAbsolutePath("/world1"), sourceProvider, shaderProperties, this);
-
 		this.overrides = new HashMap<>();
 
-		NoiseTexture = shaderProperties.getNoiseTexturePath().map(path -> {
+		this.idMap = new IdMap(root, shaderPackOptions, environmentDefines);
+
+		customNoiseTexture = shaderProperties.getNoiseTexturePath().map(path -> {
 			try {
 				return readTexture(root, path);
 			} catch (IOException e) {
@@ -291,8 +258,7 @@ public class ShaderPack {
 		shaderProperties.getCustomTextures().forEach((textureStage, customTexturePropertiesMap) -> {
 			Object2ObjectMap<String, CustomTextureData> innerCustomTextureDataMap = new Object2ObjectOpenHashMap<>();
 			customTexturePropertiesMap.forEach((samplerName, path) -> {
-			
-			
+				try {
 					innerCustomTextureDataMap.put(samplerName, readTexture(root, path));
 				} catch (IOException e) {
 					Iris.logger.error("Unable to read the custom texture at " + path, e);
@@ -302,8 +268,7 @@ public class ShaderPack {
 			customTextureDataMap.put(textureStage, innerCustomTextureDataMap);
 		});
 
-	this.customUniforms=shaderProperties.getCustomUniforms();
-
+        this.customUniforms = shaderProperties.getCustomUniforms();
 	}
 
 	private String getCurrentProfileName() {
@@ -312,35 +277,6 @@ public class ShaderPack {
 
 	public String getProfileInfo() {
 		return profileInfo;
-	}
-
-	private static Map<NamespacedId, String> parseDimensionMap(Properties properties, String keyPrefix, String fileName) {
-		Map<NamespacedId, String> overrides = new Object2ObjectArrayMap<>();
-
-		properties.forEach((keyObject, valueObject) -> {
-			String key = (String) keyObject;
-			String value = (String) valueObject;
-
-			if (!key.startsWith(keyPrefix)) 
-					
-				// Not a valid line, ignore it
-				return;
-			}
-
-			key = key.substring(keyPrefix.length());
-
-			for (String part : value.split("\\s+")) {
-				if (part.equals("*")) {
-				// 
-					overrides.put(new NamespacedId("*", "*"), key);
-				// 
-				}
-				overrides.put(new NamespacedId(part), key);
-			}
-		});
-
-	return overrides;
-
 	}
 
 	@Nullable
@@ -369,7 +305,6 @@ public class ShaderPack {
 		if (path.contains(":")) {
 			String[] parts = path.split(":");
 
-				
 			if (parts.length > 2) {
 				Iris.logger.warn("Resource location " + path + " contained more than two parts?");
 			}
@@ -391,37 +326,33 @@ public class ShaderPack {
 			boolean clamp = false;
 
 			String mcMetaPath = path + ".mcmeta";
-			Path mcMetaResolvedPath = root.resolve(mcM
-			
-			.exists(mcMetaResolved
-			
-			ect meta = loadMcMeta(mcMetaResolvedPath);
-		(m
+			Path mcMetaResolvedPath = root.resolve(mcMetaPath);
 
-		lur = meta.get("texture").getAsJsonObject().get("blur").getAsBoolean();
-		// 
-				 
-		// 
-				 (meta.get("texture").getAsJsonObject().get("clamp") != null) {
+			if (Files.exists(mcMetaResolvedPath)) {
+				try {
+					JsonObject meta = loadMcMeta(mcMetaResolvedPath);
+					if (meta.get("texture") != null) {
+						if (meta.get("texture").getAsJsonObject().get("blur") != null) {
+							blur = meta.get("texture").getAsJsonObject().get("blur").getAsBoolean();
+						}
+						if (meta.get("texture").getAsJsonObject().get("clamp") != null) {
 							clamp = meta.get("texture").getAsJsonObject().get("clamp").getAsBoolean();
-				 
-		// 
-				 
-		// 
-	ch (IOException e) {
-		// 
-				 .logger.error("Unable to read the custom texture mcmeta at " + mcMetaPath + "
-		//  ignoring: " + e);
-				}}
+						}
+					}
+				} catch (IOException e) {
+					Iris.logger.error("Unable to read the custom texture mcmeta at " + mcMetaPath + ", ignoring: " + e);
+				}
+			}
 
-	byte[] content = Files.readAllBytes(root.resolve(path));
+			byte[] content = Files.readAllBytes(root.resolve(path));
 
-	turn customTextureData;
+			customTextureData = new CustomTextureData.PngData(new TextureFilteringData(blur, clamp), content);
+		}
+		return customTextureData;
 	}
 
 	private JsonObject loadMcMeta(Path mcMetaPath) throws IOException, JsonParseException {
-		try (BufferedReader reader = new BufferedReader(
-				new InputStreamReader(Files.newInputStream(mcMetaPath), StandardCharsets.UTF_8))) {
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(Files.newInputStream(mcMetaPath), StandardCharsets.UTF_8))) {
 			JsonReader jsonReader = new JsonReader(reader);
 			return GSON.getAdapter(JsonObject.class).read(jsonReader);
 		}
@@ -443,17 +374,15 @@ public class ShaderPack {
 	}
 
 	public ProgramSet getProgramSet(DimensionId dimension) {
-		ProgramSet overrides;
+		ProgramSetInterface overrides;
 
 		overrides = this.overrides.computeIfAbsent(dimension, dim -> {
 			if (dimensionMap.containsKey(dimension)) {
 				String name = dimensionMap.get(dimension);
 				if (dimensionIds.contains(name)) {
-					return new ProgramSet(AbsolutePackPath.fromAbsolutePath("/" + name), sourceProvider,
-							shaderProperties, this);
+					return new ProgramSet(AbsolutePackPath.fromAbsolutePath("/" + name), sourceProvider, shaderProperties, this);
 				} else {
-					Iris.logger.error("Attempted to load dimension folder " + name + " for dimension " + dimension
-							+ ", but it does not exist!");
+					Iris.logger.error("Attempted to load dimension folder " + name + " for dimension " + dimension + ", but it does not exist!");
 					return ProgramSetInterface.Empty.INSTANCE;
 				}
 			} else {
@@ -461,20 +390,14 @@ public class ShaderPack {
 			}
 		});
 
-		// NB: If a dimension overrides directory is present, none of the files from the
-		// parent directory are "merged"
-		// into the override. Rather, we act as if the overrides directory contains a
-		// completely different set of
-		// shader programs unrelated to that of the base shader pack.
+        // NB: If a dimension overrides directory is present, none of the files from the parent directory are "merged"
+		//     into the override. Rather, we act as if the overrides directory contains a completely different set of
+		//     shader programs unrelated to that of the base shader pack.
 		//
-		// This makes sense because if base defined a composite pass and the override
-		// didn't, it would make it
-		// impossible to "un-define" the composite pass. It also removes a lot of
-		// complexity related to "merging"
-		// program sets. At the same time, this might be desired behavior by shader pack
-		// authors. It could make
-		// sense to bring it back as a configurable option, and have a more maintainable
-		// set of code backing it.
+		//     This makes sense because if base defined a composite pass and the override didn't, it would make it
+		//     impossible to "un-define" the composite pass. It also removes a lot of complexity related to "merging"
+		//     program sets. At the same time, this might be desired behavior by shader pack authors. It could make
+		//     sense to bring it back as a configurable option, and have a more maintainable set of code backing it.
 		if (overrides != null) {
 			return overrides;
 		} else {
@@ -482,7 +405,7 @@ public class ShaderPack {
 		}
 	}
 
-	public Optional<CustomTextureData> getCustomNoiseTexture() {
+    public Optional<CustomTextureData> getCustomNoiseTexture() {
 		return Optional.ofNullable(customNoiseTexture);
 	}
 

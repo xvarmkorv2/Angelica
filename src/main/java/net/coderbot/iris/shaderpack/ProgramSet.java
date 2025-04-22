@@ -4,6 +4,7 @@ import net.coderbot.iris.Iris;
 import net.coderbot.iris.gl.blending.BlendModeOverride;
 import net.coderbot.iris.shaderpack.include.AbsolutePackPath;
 import net.coderbot.iris.shaderpack.loading.ProgramId;
+import net.coderbot.iris.shaderpack.loading.ProgramId;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,7 +13,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
-public class ProgramSet {
+public interface ProgramSetInterface {
+	class Empty implements ProgramSetInterface {
+
+		public static final ProgramSetInterface INSTANCE = new Empty();
+	}
+}
+public class ProgramSet implements ProgramSetInterface  {
 	private final PackDirectives packDirectives;
 
 	private final ProgramSource shadow;
