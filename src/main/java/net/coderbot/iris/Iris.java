@@ -576,13 +576,10 @@ public class Iris {
             if (level.provider == null)
                 return DimensionId.OVERWORLD;
             if (level.provider.isHellWorld || level.provider.dimensionId == -1) {
-                lastDimension = DimensionId.NETHER;
                 return DimensionId.NETHER;
             } else if (level.provider.dimensionId == 1) {
-                lastDimension = DimensionId.END;
                 return DimensionId.END;
             } else {
-                lastDimension = level.provider.dimensionId;
                 return level.provider.dimensionId;
             }
         } else {
