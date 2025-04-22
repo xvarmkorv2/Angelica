@@ -107,6 +107,7 @@ public class ShaderPack {
 		// This cannot be done in IDMap, as we do not have the include graph, and
 		// subsequently the shader settings.
 		List<String> dimensionIdCreator = new ArrayList<>();
+		dimensionMap = new Object2ObjectArrayMap<>();
 		for (int i = -128; i <= 128; i++) {
 			String world = "world" + i;
 			Path worldDir = root.resolve(world);
