@@ -1,6 +1,7 @@
 package net.coderbot.iris.pipeline.transform;
 
 import net.coderbot.iris.gl.shader.ShaderType;
+import net.coderbot.iris.Iris;
 import net.coderbot.iris.pipeline.transform.parameter.Parameters;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.taumc.glsl.Util;
@@ -11,15 +12,16 @@ import java.util.Map;
 
 public class CompatibilityTransformer {
 
-    private static final ShaderType[] pipeline = {ShaderType.VERTEX, ShaderType.GEOMETRY, ShaderType.FRAGMENT};
-
+    private static final ShaderType[] pipeline = { ShaderType.VERTEX, ShaderType.GEOMETRY, ShaderType.FRAGMENT };
 
     public static void transformEach(GLSLParser.Translation_unitContext translationUnit, Parameters parameters) {
         if (parameters.type == PatchShaderType.VERTEX) {
             ;
             // TODO: sildur's jankness
-            // This is a hacky patch for sildur's shaders that changes the way it does it's waving water to make it work better?
-            // Why is this the GLSL transformation code in Iris, tell sildur to fix it and remove this?
+            // This is a hacky patch for sildur's shaders that changes the way it does it's
+            // waving water to make it work better?
+            // Why is this the GLSL transformation code in Iris, tell sildur to fix it and
+            // remove this?
             // it's still there in current, modern Iris
             // See https://github.com/IrisShaders/Iris/issues/509
             Util.replaceExpression(translationUnit, "fract(worldpos.y + 0.001)", "fract(worldpos.y + 0.01)");
@@ -37,34 +39,37 @@ public class CompatibilityTransformer {
         Util.removeUnusedFunctions(translationUnit);
         Util.removeConstAssignment(translationUnit);
 
-        // TODO: glsl-transformation-lib doesn't have a way to identify empty declarations
-        // this transformation is not done in current versions of Iris, so not sure it's necessary
-//		boolean emptyDeclarationHit = root.process(
-//				root.nodeIndex.getStream(EmptyDeclaration.class),
-//				ASTNode::detachAndDelete);
-//		if (emptyDeclarationHit) {
-//			LOGGER.warn(
-//					"Removed empty external declarations (\";\").");
-//		}
+        // TODO: glsl-transformation-lib doesn't have a way to identify empty
+        // declarations
+        // this transformation is not done in current versions of Iris, so not sure it's
+        // necessary
+        // boolean emptyDeclarationHit = root.process(
+        // root.nodeIndex.getStream(EmptyDeclaration.class),
+        // ASTNode::detachAndDelete);
+        // if (emptyDeclarationHit) {
+        // LOGGER.warn(
+        // "Removed empty external declarations (\";\").");
+        // }
     }
 
-	// does transformations that require cross-shader type data
-    public static void transformGrouped(Map<PatchShaderType, GLSLParser.Translation_unitContext> trees, Parameters parameters) {
-		/**
-		 * find attributes that are declared as "in" in geometry or fragment but not
-		 * declared as "out" in the previous stage. The missing "out" declarations for
-		 * these attributes are added and initialized.
-		 *
-		 * It doesn't bother with array specifiers because they are only legal in
-		 * geometry shaders, but then also only as an in declaration. The out
-		 * declaration in the vertex shader is still just a single value. Missing out
-		 * declarations in the geometry shader are also just normal.
-		 *
-		 * TODO:
-		 * - fix issues where Iris' own declarations are detected and patched like
-		 * iris_FogFragCoord if there are geometry shaders present
-		 * - improved geometry shader support? They use funky declarations
-		 */
+    // does transformations that require cross-shader type data
+    public static void transformGrouped(Map<PatchShaderType, GLSLParser.Translation_unitContext> trees,
+            Parameters parameters) {
+        /**
+         * find attributes that are declared as "in" in geometry or fragment but not
+         * declared as "out" in the previous stage. The missing "out" declarations for
+         * these attributes are added and initialized.
+         *
+         * It doesn't bother with array specifiers because they are only legal in
+         * geometry shaders, but then also only as an in declaration. The out
+         * declaration in the vertex shader is still just a single value. Missing out
+         * declarations in the geometry shader are also just normal.
+         *
+         * TODO:
+         * - fix issues where Iris' own declarations are detected and patched like
+         * iris_FogFragCoord if there are geometry shaders present
+         * - improved geometry shader support? They use funky declarations
+         */
         ShaderType prevType = null;
         for (ShaderType type : pipeline) {
             PatchShaderType[] patchTypes = PatchShaderType.fromGlShaderType(type);
@@ -99,7 +104,8 @@ public class CompatibilityTransformer {
                     continue;
                 }
 
-                Map<String, GLSLParser.Single_declarationContext> inDec = Util.findQualifiers(currentTree, GLSLLexer.IN);
+                Map<String, GLSLParser.Single_declarationContext> inDec = Util.findQualifiers(currentTree,
+                        GLSLLexer.IN);
                 for (String in : inDec.keySet()) {
                     if (in.startsWith("gl_")) {
                         continue;
@@ -116,8 +122,10 @@ public class CompatibilityTransformer {
                             Util.initialize(prevTree, inDec.get(in), in);
                         }
                     } else {
-                        ParseTree outType = outDec.get(in).fully_specified_type().type_specifier().type_specifier_nonarray().children.get(0);
-                        ParseTree inType = inDec.get(in).fully_specified_type().type_specifier().type_specifier_nonarray().children.get(0);
+                        ParseTree outType = outDec.get(in).fully_specified_type().type_specifier()
+                                .type_specifier_nonarray().children.get(0);
+                        ParseTree inType = inDec.get(in).fully_specified_type().type_specifier()
+                                .type_specifier_nonarray().children.get(0);
 
                         if (outDec.get(in).fully_specified_type().type_specifier().array_specifier() != null) {
                             continue;
@@ -125,7 +133,12 @@ public class CompatibilityTransformer {
 
                         if (inType.getText().equals(outType.getText())) {
                             if (!Util.hasAssigment(prevTree, in)) {
-                                Util.initialize(prevTree, inDec.get(in), in);
+                                try {
+                                    Util.initialize(prevTree, inDec.get(in), in);
+                                } catch (NullPointerException e) {
+                                    Iris.logger.error("Awhy does this happen");
+                                    Iris.logger.error("", e);
+                                }
                             }
                         }
                     }
