@@ -133,10 +133,12 @@ public class CompatibilityTransformer {
 
                         if (inType.getText().equals(outType.getText())) {
                             if (!Util.hasAssigment(prevTree, in)) {
-                                try {
+                                try { // Temp fix for shader compilation erroring out on custom dimensions
+                                      // Not Ideal I assume, but I don't know enough about this codebase to properly
+                                      // fix this eror
                                     Util.initialize(prevTree, inDec.get(in), in);
                                 } catch (NullPointerException e) {
-                                    Iris.logger.error("Awhy does this happen");
+                                    Iris.logger.error("Why does this happen");
                                     Iris.logger.error("", e);
                                 }
                             }
